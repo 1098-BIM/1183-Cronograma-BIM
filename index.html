@@ -223,8 +223,8 @@
   </div>
 </div>
 <script>
-const YEAR = 2026;
-const PROJECTS = [
+var YEAR = 2026;
+var PROJECTS = [
   {
     id: "N189",
     desc: "CME esterna / Rampa rota de fuga",
@@ -423,205 +423,178 @@ const PROJECTS = [
   }
 ];
 
-const LABELS = {
-  envio:  {name:"1º envio",   chip:"envio",   ico:"📤"},
-  dr:     {name:"DR MF",      chip:"dr",      ico:"📋"},
-  apres:  {name:"Apresentação Einstein", chip:"apres", ico:"⭐"},
-  entrega:{name:"Entrega final", chip:"entrega", ico:"🏁"},
-  done:   {name:"Concluído",  chip:"dr",      ico:"✅"},
+/* ============================================================
+   ENGINE DO PAINEL — ES5 puro para Smart TV antiga (Tizen/Sony/LG)
+   ============================================================ */
+var LABELS = {
+  envio:  {name:"1\u00ba envio",   chip:"envio",   ico:"\uD83D\uDCE4"},
+  dr:     {name:"DR MF",      chip:"dr",      ico:"\uD83D\uDCCB"},
+  apres:  {name:"Apresenta\u00e7\u00e3o Einstein", chip:"apres", ico:"\u2B50"},
+  entrega:{name:"Entrega final", chip:"entrega", ico:"\uD83C\uDFC1"},
+  done:   {name:"Conclu\u00eddo",  chip:"dr",      ico:"\u2705"}
 };
-const MONTHS = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
-const WEEKDAYS = ["domingo","segunda-feira","terça-feira","quarta-feira","quinta-feira","sexta-feira","sábado"];
+var MONTHS = ["janeiro","fevereiro","mar\u00e7o","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+var WEEKDAYS = ["domingo","segunda-feira","ter\u00e7a-feira","quarta-feira","quinta-feira","sexta-feira","s\u00e1bado"];
 
-function parseDMY(s){ const [d,m]=s.split("/").map(Number); return new Date(YEAR,m-1,d); }
-function startOfDay(dt){ return new Date(dt.getFullYear(),dt.getMonth(),dt.getDate()); }
+function pad2(n){ n = String(n); return n.length < 2 ? "0" + n : n; }
+function esc(s){ s = (s == null ? "" : String(s)); return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function parseDMY(s){ var pa = String(s).split("/"); return new Date(YEAR, parseInt(pa[1],10)-1, parseInt(pa[0],10)); }
+function startOfDay(dt){ return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()); }
 function daysBetween(a,b){ return Math.round((startOfDay(b)-startOfDay(a))/86400000); }
-function fmtShort(dt){ return String(dt.getDate()).padStart(2,"0")+"/"+String(dt.getMonth()+1).padStart(2,"0"); }
+function fmtShort(dt){ return pad2(dt.getDate())+"/"+pad2(dt.getMonth()+1); }
 
-/* Build flat event list with computed timing */
 function buildEvents(now){
-  const list=[];
-  PROJECTS.forEach(p=>{
-    p.events.forEach(ev=>{
-      const date=parseDMY(ev.d);
-      const dd=daysBetween(now,date);
-      list.push({proj:p.id,desc:p.desc,type:ev.t,date,dd,raw:ev.d});
-    });
-  });
+  var list=[], i, j;
+  for (i=0;i<PROJECTS.length;i++){
+    var p=PROJECTS[i];
+    for (j=0;j<p.events.length;j++){
+      var ev=p.events[j]; var date=parseDMY(ev.d);
+      list.push({proj:p.id,desc:p.desc,type:ev.t,date:date,dd:daysBetween(now,date),raw:ev.d});
+    }
+  }
   return list;
 }
-
-/* Project progress: position of "now" along first->last event span */
-function projectProgress(p,now){
-  const dates=p.events.map(e=>parseDMY(e.d)).sort((a,b)=>a-b);
-  const isDone=p.events.some(e=>e.t==="done") || (p.events.some(e=>e.t==="entrega") && now>=startOfDay(parseDMY(p.events.find(e=>e.t==="entrega").d)));
-  const start=dates[0], end=dates[dates.length-1];
-  let pct;
-  if(now<=start) pct=0;
-  else if(now>=end) pct=100;
+function projectProgress(p, now){
+  var dates=[], i;
+  for (i=0;i<p.events.length;i++){ dates.push(parseDMY(p.events[i].d)); }
+  dates.sort(function(a,b){ return a-b; });
+  var hasDone=false, hasEntrega=false, entregaDate=null;
+  for (i=0;i<p.events.length;i++){
+    if (p.events[i].t==="done") hasDone=true;
+    if (p.events[i].t==="entrega"){ hasEntrega=true; entregaDate=parseDMY(p.events[i].d); }
+  }
+  var isDone = hasDone || (hasEntrega && now>=startOfDay(entregaDate));
+  var start=dates[0], end=dates[dates.length-1], pct;
+  if (now<=start) pct=0; else if (now>=end) pct=100;
   else pct=Math.round((startOfDay(now)-startOfDay(start))/(startOfDay(end)-startOfDay(start))*100);
-  const lastDeliv = p.events.filter(e=>e.t==="entrega"||e.t==="done").map(e=>parseDMY(e.d)).sort((a,b)=>b-a)[0]||end;
-  const late = !isDone && now>startOfDay(lastDeliv);
-  return {pct,isDone,late,end};
+  var delivs=[];
+  for (i=0;i<p.events.length;i++){ if (p.events[i].t==="entrega"||p.events[i].t==="done") delivs.push(parseDMY(p.events[i].d)); }
+  delivs.sort(function(a,b){ return b-a; });
+  var lastDeliv = delivs.length ? delivs[0] : end;
+  var late = !isDone && now>startOfDay(lastDeliv);
+  return {pct:pct,isDone:isDone,late:late,end:end};
 }
-
-/* ---------- RENDER ---------- */
-function severity(dd){
-  if(dd<0) return "past";
-  if(dd===0) return "today";
-  if(dd<=2) return "urgent";
-  if(dd<=6) return "soon";
-  return "ok";
-}
+function byProximity(a,b){ if (a.dd!==b.dd) return a.dd-b.dd; return a.proj<b.proj?-1:(a.proj>b.proj?1:0); }
 
 function render(){
-  const now=new Date();
-  const events=buildEvents(now);
+  var now=new Date(), events=buildEvents(now), i, e;
+  document.getElementById("clock").innerHTML = pad2(now.getHours())+":"+pad2(now.getMinutes());
+  document.getElementById("today").innerHTML = WEEKDAYS[now.getDay()]+", "+now.getDate()+" de "+MONTHS[now.getMonth()]+" de "+now.getFullYear();
 
-  // clock
-  document.getElementById("clock").textContent =
-    String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
-  document.getElementById("today").textContent =
-    WEEKDAYS[now.getDay()]+", "+now.getDate()+" de "+MONTHS[now.getMonth()]+" de "+now.getFullYear();
+  var upcoming=[];
+  for (i=0;i<events.length;i++){ e=events[i]; if (e.type!=="done" && e.dd>=0) upcoming.push(e); }
+  upcoming.sort(byProximity);
 
-  // upcoming (today + future), sorted
-  const upcoming = events.filter(e=>e.type!=="done" && e.dd>=0).sort((a,b)=>a.dd-b.dd || a.proj.localeCompare(b.proj));
-  const concluded = events.filter(e=>e.type==="done" || (e.type==="entrega" && e.dd<0));
-
-  // KPIs
-  const next = upcoming[0];
-  const todayCount = upcoming.filter(e=>e.dd===0).length;
-  const wk = upcoming.filter(e=>e.dd>=0 && e.dd<=7).length;
-  const urgent = upcoming.filter(e=>e.dd>=0 && e.dd<=2).length;
-  const deliveriesLeft = upcoming.filter(e=>e.type==="entrega").length;
-
-  const kpiHtml = [
-    {cls: next ? (next.dd<=2?"k-red":next.dd<=6?"k-amber":"k-green") : "k-green",
-     label:"Próximo marco", value: next ? (next.dd===0?"HOJE":next.dd+(next.dd===1?" dia":" dias")) : "—",
-     foot: next ? `${next.proj} · ${LABELS[next.type].name} · ${fmtShort(next.date)}` : "tudo entregue"},
-    {cls:"k-orange", label:"Esta semana", value:wk, foot:"marcos nos próximos 7 dias"},
-    {cls:"k-red", label:"Atenção imediata", value:urgent, foot:"em até 48 horas"},
-    {cls:"k-green", label:"Hoje", value:todayCount, foot: todayCount? "marcos para hoje":"nenhum marco hoje"},
-    {cls:"k-blue", label:"Entregas restantes", value:deliveriesLeft, foot:"modelos a finalizar"},
-  ].map(k=>`<div class="kpi ${k.cls}"><div class="label">${k.label}</div><div class="value">${k.value}</div><div class="foot">${k.foot}</div></div>`).join("");
-  document.getElementById("kpis").innerHTML=kpiHtml;
-
-  // FEED (next up to 8)
-  const feed = upcoming.slice(0,8).map(e=>{
-    const sev=severity(e.dd);
-    let cls="row", whenBig, whenSmall;
-    if(e.dd===0){cls+=" today";whenBig="HOJE";whenSmall="entrega/marco";}
-    else if(e.dd<=2){cls+=" urgent flash";whenBig=e.dd;whenSmall=e.dd===1?"dia restante":"dias restantes";}
-    else if(e.dd<=6){cls+=" soon";whenBig=e.dd;whenSmall="dias restantes";}
-    else{whenBig=e.dd;whenSmall="dias restantes";}
-    const L=LABELS[e.type];
-    return `<div class="${cls}">
-      <div class="proj">${e.proj}</div>
-      <div class="desc">
-        <div class="t">${e.desc}</div>
-        <div class="m"><span class="chip ${L.chip}">${L.ico} ${L.name}</span> · ${fmtShort(e.date)}</div>
-      </div>
-      <div class="when"><div class="big">${whenBig}</div><div class="small">${whenSmall}</div></div>
-    </div>`;
-  }).join("");
-  document.getElementById("feed").innerHTML = feed || `<div class="row"><div class="desc"><div class="t">Nenhum marco pendente 🎉</div><div class="m">Todos os modelos foram entregues.</div></div></div>`;
-
-  // PROGRESS
-  const prog = PROJECTS.map(p=>{
-    const pr=projectProgress(p,now);
-    let icls=""; if(pr.isDone) icls="is-done"; else if(pr.late) icls="is-late";
-    const status = pr.isDone? "concluído" : pr.late? "atrasado" : pr.pct>=100? "em entrega" : "em andamento";
-    return `<div class="pitem ${icls}">
-      <div class="pl"><span>${p.id} — ${p.desc}</span><span class="pct">${pr.isDone?"✓ "+status:pr.pct+"% · "+status}</span></div>
-      <div class="bar"><i style="width:${pr.isDone?100:pr.pct}%"></i></div>
-    </div>`;
-  }).join("");
-  document.getElementById("prog").innerHTML=prog;
-
-  // STATS
-  const concl = PROJECTS.filter(p=>projectProgress(p,now).isDone).length;
-  const active = PROJECTS.length - concl;
-  document.getElementById("stats").innerHTML = `
-    <div class="sbox s-blue"><div class="n">${PROJECTS.length}</div><div class="l">Projetos totais</div></div>
-    <div class="sbox s-green"><div class="n">${concl}</div><div class="l">Concluídos</div></div>
-    <div class="sbox s-amber"><div class="n">${active}</div><div class="l">Em andamento</div></div>
-    <div class="sbox s-red"><div class="n">${urgent}</div><div class="l">Marcos críticos (≤48h)</div></div>`;
-  document.getElementById("windowTag").textContent = `${upcoming.length} marcos restantes`;
-
-  // TICKER
-  const t=document.getElementById("ticker"), lab=document.getElementById("tickerLab"), move=document.getElementById("tickerMove");
-  const crit = upcoming.filter(e=>e.dd<=2);
-  let parts=[];
-  if(crit.length){
-    t.classList.remove("calm"); lab.innerHTML="⚠ Alertas";
-    crit.forEach(e=>{
-      const tx = e.dd===0? "HOJE" : e.dd===1? "AMANHÃ" : "em "+e.dd+" dias";
-      parts.push(`<span><b>${e.proj}</b> — ${LABELS[e.type].name} <b>${tx}</b> (${fmtShort(e.date)})</span>`);
-    });
-  } else {
-    t.classList.add("calm"); lab.innerHTML="✓ No prazo";
-    parts.push(`<span>Nenhum marco crítico nas próximas 48 horas.</span>`);
+  var next = upcoming.length ? upcoming[0] : null;
+  var todayCount=0, wk=0, urgent=0, deliveriesLeft=0;
+  for (i=0;i<upcoming.length;i++){ e=upcoming[i];
+    if (e.dd===0) todayCount++;
+    if (e.dd>=0 && e.dd<=7) wk++;
+    if (e.dd>=0 && e.dd<=2) urgent++;
+    if (e.type==="entrega") deliveriesLeft++;
   }
-  // sempre acrescenta o próximo da semana como contexto
-  upcoming.filter(e=>e.dd>2 && e.dd<=7).forEach(e=>{
-    parts.push(`<span><b>${e.proj}</b> ${LABELS[e.type].name} em ${e.dd} dias (${fmtShort(e.date)})</span>`);
-  });
-  parts.push(`<span>Reunião de DR MF (Design Review) — acompanhar datas com BIM Manager e Coordenação de Projeto.</span>`);
+
+  var nextCls = next ? (next.dd<=2?"k-red":(next.dd<=6?"k-amber":"k-green")) : "k-green";
+  var nextVal = next ? (next.dd===0?"HOJE":next.dd+(next.dd===1?" dia":" dias")) : "\u2014";
+  var nextFoot = next ? (next.proj+" \u00b7 "+LABELS[next.type].name+" \u00b7 "+fmtShort(next.date)) : "tudo entregue";
+  var kpis=[
+    {cls:nextCls,label:"Pr\u00f3ximo marco",value:nextVal,foot:nextFoot},
+    {cls:"k-orange",label:"Esta semana",value:wk,foot:"marcos nos pr\u00f3ximos 7 dias"},
+    {cls:"k-red",label:"Aten\u00e7\u00e3o imediata",value:urgent,foot:"em at\u00e9 48 horas"},
+    {cls:"k-green",label:"Hoje",value:todayCount,foot:todayCount?"marcos para hoje":"nenhum marco hoje"},
+    {cls:"k-blue",label:"Entregas restantes",value:deliveriesLeft,foot:"modelos a finalizar"}
+  ];
+  var kpiHtml="";
+  for (i=0;i<kpis.length;i++){ var k=kpis[i];
+    kpiHtml += '<div class="kpi '+k.cls+'"><div class="label">'+k.label+'</div><div class="value">'+k.value+'</div><div class="foot">'+k.foot+'</div></div>';
+  }
+  document.getElementById("kpis").innerHTML = kpiHtml;
+
+  var feed="", lim=Math.min(8,upcoming.length);
+  for (i=0;i<lim;i++){ e=upcoming[i];
+    var cls="row", whenBig, whenSmall;
+    if (e.dd===0){ cls+=" today"; whenBig="HOJE"; whenSmall="entrega/marco"; }
+    else if (e.dd<=2){ cls+=" urgent flash"; whenBig=e.dd; whenSmall=(e.dd===1?"dia restante":"dias restantes"); }
+    else if (e.dd<=6){ cls+=" soon"; whenBig=e.dd; whenSmall="dias restantes"; }
+    else { whenBig=e.dd; whenSmall="dias restantes"; }
+    var L=LABELS[e.type];
+    feed += '<div class="'+cls+'"><div class="proj">'+esc(e.proj)+'</div>'+
+            '<div class="desc"><div class="t">'+esc(e.desc)+'</div>'+
+            '<div class="m"><span class="chip '+L.chip+'">'+L.ico+' '+L.name+'</span> \u00b7 '+fmtShort(e.date)+'</div></div>'+
+            '<div class="when"><div class="big">'+whenBig+'</div><div class="small">'+whenSmall+'</div></div></div>';
+  }
+  if (!feed){ feed='<div class="row"><div class="desc"><div class="t">Nenhum marco pendente \uD83C\uDF89</div><div class="m">Todos os modelos foram entregues.</div></div></div>'; }
+  document.getElementById("feed").innerHTML = feed;
+
+  var prog="", conclCount=0;
+  for (i=0;i<PROJECTS.length;i++){ var p=PROJECTS[i]; var pr=projectProgress(p,now);
+    if (pr.isDone) conclCount++;
+    var icls = pr.isDone?"is-done":(pr.late?"is-late":"");
+    var status = pr.isDone?"conclu\u00eddo":(pr.late?"atrasado":(pr.pct>=100?"em entrega":"em andamento"));
+    var pctTxt = pr.isDone?("\u2713 "+status):(pr.pct+"% \u00b7 "+status);
+    var w = pr.isDone?100:pr.pct;
+    prog += '<div class="pitem '+icls+'"><div class="pl"><span>'+esc(p.id)+' \u2014 '+esc(p.desc)+'</span><span class="pct">'+pctTxt+'</span></div>'+
+            '<div class="bar"><i style="width:'+w+'%"></i></div></div>';
+  }
+  document.getElementById("prog").innerHTML = prog;
+
+  var active = PROJECTS.length - conclCount;
+  document.getElementById("stats").innerHTML =
+    '<div class="sbox s-blue"><div class="n">'+PROJECTS.length+'</div><div class="l">Projetos totais</div></div>'+
+    '<div class="sbox s-green"><div class="n">'+conclCount+'</div><div class="l">Conclu\u00eddos</div></div>'+
+    '<div class="sbox s-amber"><div class="n">'+active+'</div><div class="l">Em andamento</div></div>'+
+    '<div class="sbox s-red"><div class="n">'+urgent+'</div><div class="l">Marcos cr\u00edticos (\u226448h)</div></div>';
+  document.getElementById("windowTag").innerHTML = upcoming.length+" marcos restantes";
+
+  var t=document.getElementById("ticker"), lab=document.getElementById("tickerLab"), move=document.getElementById("tickerMove");
+  var parts=[], critCount=0;
+  for (i=0;i<upcoming.length;i++){ if (upcoming[i].dd<=2) critCount++; }
+  if (critCount>0){
+    t.className="ticker"; lab.innerHTML="\u26A0 Alertas";
+    for (i=0;i<upcoming.length;i++){ e=upcoming[i];
+      if (e.dd<=2){ var tx=e.dd===0?"HOJE":(e.dd===1?"AMANH\u00c3":"em "+e.dd+" dias");
+        parts.push('<span><b>'+esc(e.proj)+'</b> \u2014 '+LABELS[e.type].name+' <b>'+tx+'</b> ('+fmtShort(e.date)+')</span>');
+      }
+    }
+  } else {
+    t.className="ticker calm"; lab.innerHTML="\u2713 No prazo";
+    parts.push('<span>Nenhum marco cr\u00edtico nas pr\u00f3ximas 48 horas.</span>');
+  }
+  for (i=0;i<upcoming.length;i++){ e=upcoming[i];
+    if (e.dd>2 && e.dd<=7){ parts.push('<span><b>'+esc(e.proj)+'</b> '+LABELS[e.type].name+' em '+e.dd+' dias ('+fmtShort(e.date)+')</span>'); }
+  }
+  parts.push('<span>Reuni\u00e3o de DR MF (Design Review) \u2014 acompanhar datas com BIM Manager e Coordena\u00e7\u00e3o de Projeto.</span>');
   move.innerHTML = parts.join("");
 }
 
 render();
-setInterval(render, 30000);            // recalcula a cada 30s
-// vira o dia mesmo se a TV ficar ligada 24h
-let lastDay = new Date().getDate();
-setInterval(()=>{ const d=new Date().getDate(); if(d!==lastDay){lastDay=d;render();} }, 60000);
+setInterval(render, 30000);
+var lastDay = new Date().getDate();
+setInterval(function(){ var d=new Date().getDate(); if (d!==lastDay){ lastDay=d; render(); } }, 60000);
 
-/* =========================================================
-   AUTO-ATUALIZAÇÃO — duas camadas, sem precisar tocar na TV:
-
-   (1) CHECAGEM DE MUDANÇA a cada 30 min: o painel busca o
-       próprio arquivo (com cache-busting) e compara com a versão
-       carregada. Só recarrega SE o conteúdo mudou — assim, quando
-       você publica uma atualização durante o dia, a TV pega em até
-       30 min, mas NÃO pisca à toa quando nada mudou.
-
-   (2) RELOAD diário às 4h: rede de segurança, horário sem ninguém.
-   ========================================================= */
-const CHECK_MINUTES = 30;     // intervalo de checagem durante o dia
-const RELOAD_HOUR   = 4;      // reload de segurança de madrugada
-const RELOAD_MIN    = 0;
-
-// "impressão digital" da versão atualmente carregada
-let __baseline = document.documentElement.outerHTML.length + ":" +
-                 document.documentElement.outerHTML.slice(0, 4000);
-
-function cacheBustedUrl(){
-  const u = new URL(window.location.href);
-  u.searchParams.set("v", Date.now());
-  return u.toString();
-}
+/* AUTO-ATUALIZACAO (ES5 / XMLHttpRequest) */
+var CHECK_MINUTES = 30, RELOAD_HOUR = 4, RELOAD_MIN = 0;
+function baseUrlNoQuery(){ var h=window.location.href; var i=h.indexOf("#"); if(i>=0)h=h.substring(0,i); var q=h.indexOf("?"); if(q>=0)h=h.substring(0,q); return h; }
+function cacheBustedUrl(){ return baseUrlNoQuery()+"?v="+(new Date().getTime()); }
 function hardReload(){ window.location.replace(cacheBustedUrl()); }
-
-async function checkForUpdate(){
-  try{
-    // busca a versão publicada, ignorando cache do navegador
-    const resp = await fetch(cacheBustedUrl(), {cache:"no-store"});
-    if(!resp.ok) return;                 // offline/erro: ignora, tenta na próxima
-    const text = await resp.text();
-    const fp = text.length + ":" + text.slice(0, 4000);
-    if(fp !== __baseline){
-      // versão nova detectada → recarrega para exibir
-      hardReload();
-    }
-  }catch(e){ /* sem rede agora: mantém o que está na tela */ }
+var __baseline = null;
+function fingerprint(txt){ return txt.length+":"+txt.substring(0,4000); }
+function checkForUpdate(){
+  try {
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", cacheBustedUrl(), true);
+    xhr.onreadystatechange = function(){
+      if (xhr.readyState===4 && xhr.status>=200 && xhr.status<300){
+        var fp = fingerprint(xhr.responseText);
+        if (__baseline===null){ __baseline=fp; } else if (fp!==__baseline){ hardReload(); }
+      }
+    };
+    xhr.send();
+  } catch (err) {}
 }
-setInterval(checkForUpdate, CHECK_MINUTES * 60000);
-
-// reload de segurança às 4h (caso a checagem falhe por muito tempo)
-setInterval(()=>{
-  const now=new Date();
-  if(now.getHours()===RELOAD_HOUR && now.getMinutes()===RELOAD_MIN){ hardReload(); }
-}, 60000);
+checkForUpdate();
+setInterval(checkForUpdate, CHECK_MINUTES*60000);
+setInterval(function(){ var now=new Date(); if (now.getHours()===RELOAD_HOUR && now.getMinutes()===RELOAD_MIN){ hardReload(); } }, 60000);
 
 </script>
 </body>
