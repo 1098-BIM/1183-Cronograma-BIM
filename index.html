@@ -308,6 +308,10 @@ const PROJECTS = [
       {
         t: "entrega",
         d: "23/06"
+      },
+      {
+        t: "dr",
+        d: "15/06"
       }
     ]
   },
@@ -573,22 +577,51 @@ let lastDay = new Date().getDate();
 setInterval(()=>{ const d=new Date().getDate(); if(d!==lastDay){lastDay=d;render();} }, 60000);
 
 /* =========================================================
-   AUTO-RELOAD diário — recarrega a página de madrugada para
-   puxar a versão mais nova publicada no GitHub Pages, sem que
-   ninguém precise tocar na TV. Horário de baixo movimento.
+   AUTO-ATUALIZAÇÃO — duas camadas, sem precisar tocar na TV:
+
+   (1) CHECAGEM DE MUDANÇA a cada 30 min: o painel busca o
+       próprio arquivo (com cache-busting) e compara com a versão
+       carregada. Só recarrega SE o conteúdo mudou — assim, quando
+       você publica uma atualização durante o dia, a TV pega em até
+       30 min, mas NÃO pisca à toa quando nada mudou.
+
+   (2) RELOAD diário às 4h: rede de segurança, horário sem ninguém.
    ========================================================= */
-const RELOAD_HOUR = 4;    // 4h da manhã
-const RELOAD_MIN  = 0;
+const CHECK_MINUTES = 30;     // intervalo de checagem durante o dia
+const RELOAD_HOUR   = 4;      // reload de segurança de madrugada
+const RELOAD_MIN    = 0;
+
+// "impressão digital" da versão atualmente carregada
+let __baseline = document.documentElement.outerHTML.length + ":" +
+                 document.documentElement.outerHTML.slice(0, 4000);
+
+function cacheBustedUrl(){
+  const u = new URL(window.location.href);
+  u.searchParams.set("v", Date.now());
+  return u.toString();
+}
+function hardReload(){ window.location.replace(cacheBustedUrl()); }
+
+async function checkForUpdate(){
+  try{
+    // busca a versão publicada, ignorando cache do navegador
+    const resp = await fetch(cacheBustedUrl(), {cache:"no-store"});
+    if(!resp.ok) return;                 // offline/erro: ignora, tenta na próxima
+    const text = await resp.text();
+    const fp = text.length + ":" + text.slice(0, 4000);
+    if(fp !== __baseline){
+      // versão nova detectada → recarrega para exibir
+      hardReload();
+    }
+  }catch(e){ /* sem rede agora: mantém o que está na tela */ }
+}
+setInterval(checkForUpdate, CHECK_MINUTES * 60000);
+
+// reload de segurança às 4h (caso a checagem falhe por muito tempo)
 setInterval(()=>{
   const now=new Date();
-  if(now.getHours()===RELOAD_HOUR && now.getMinutes()===RELOAD_MIN){
-    // cache-busting: força o navegador da TV a baixar a versão atual,
-    // ignorando cópia antiga em cache.
-    const u=new URL(window.location.href);
-    u.searchParams.set("v", Date.now());
-    window.location.replace(u.toString());
-  }
-}, 60000);                // confere a cada minuto
+  if(now.getHours()===RELOAD_HOUR && now.getMinutes()===RELOAD_MIN){ hardReload(); }
+}, 60000);
 
 </script>
 </body>
