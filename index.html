@@ -298,7 +298,7 @@ function projectProgress(p, now){
     if (isDoneType(p.events[i].t)) hasDone=true;
     if (isEntregaType(p.events[i].t)){ hasEntrega=true; entregaDate=parseDMY(p.events[i].d); }
   }
-  var isDone = hasDone || (hasEntrega && now>=startOfDay(entregaDate));
+  var isDone = hasDone;
   var start=dates[0], end=dates[dates.length-1], pct;
   if (isDone) pct=100;
   else if (now<=start) pct=0; else if (now>=end) pct=100;
