@@ -140,6 +140,48 @@ body {
 .ticker .move span { margin-right:48px; }
 .ticker .move b { color:#ffd27a; font-weight:800; }
 
+/* ============================================================
+   OVERLAY DE DESTAQUE (spotlight) — marcos de hoje ampliados.
+   Fica dentro da .stage (que é escalada), cobrindo tudo.
+   ============================================================ */
+.spotlight {
+  display:none;
+  position:absolute; left:0; top:0; width:1920px; height:1080px;
+  background:rgba(8,18,48,0.82);
+  z-index:5000;
+}
+.spotlight.show { display:block; }
+.spotlight-card {
+  position:absolute; left:160px; right:160px; top:120px; bottom:120px;
+  background:#ffffff; border-radius:24px; padding:40px 56px;
+  box-shadow:0 30px 80px rgba(0,0,0,0.5);
+  overflow:hidden;
+}
+.spotlight-head { border-bottom:3px solid #e3e8f3; padding-bottom:22px; margin-bottom:26px; }
+.spotlight-title { font-size:52px; font-weight:800; color:#0c1b47; }
+.spotlight-count { float:right; font-size:30px; font-weight:800; color:#1f47b8; margin-top:14px; }
+.spotlight-body { }
+.sl-item {
+  border:2px solid #e3e8f3; border-radius:18px; padding:24px 30px; margin-bottom:20px;
+  position:relative;
+}
+.sl-item.urgent { border-color:#d8342b; background:#fbe8e7; }
+.sl-item.today  { border-color:#2e9e3f; background:#eef9f0; }
+.sl-proj {
+  display:inline-block; font-size:34px; font-weight:800; color:#142a6b;
+  background:#eef2fa; border:2px solid #d6def0; border-radius:12px; padding:8px 20px; margin-right:24px; vertical-align:middle;
+}
+.sl-text { display:inline-block; vertical-align:middle; max-width:1000px; }
+.sl-desc { font-size:34px; font-weight:800; color:#0e1730; line-height:1.15; }
+.sl-meta { font-size:24px; font-weight:700; color:#64708f; margin-top:8px; }
+.sl-chip { display:inline-block; font-size:22px; font-weight:800; padding:5px 16px; border-radius:999px; margin-right:14px; vertical-align:middle; }
+.sl-when { position:absolute; right:34px; top:50%; margin-top:-40px; text-align:right; }
+.sl-when .b { font-size:64px; font-weight:800; line-height:1; }
+.sl-when .s { font-size:22px; font-weight:700; color:#64708f; margin-top:6px; }
+.sl-item.urgent .sl-when .b { color:#d8342b; }
+.sl-item.today  .sl-when .b { color:#2e9e3f; }
+.spotlight-foot { position:absolute; left:56px; right:56px; bottom:34px; font-size:22px; font-weight:700; color:#94a0bd; text-align:center; }
+
 </style>
 </head>
 <body>
@@ -183,6 +225,18 @@ body {
   <div class="ticker" id="ticker">
     <div class="lab" id="tickerLab">&#9888; Alertas</div>
     <div class="track"><div class="move" id="tickerMove"></div></div>
+  </div>
+
+  <!-- Overlay de destaque dos marcos de hoje (aparece a cada 10 min) -->
+  <div class="spotlight" id="spotlight">
+    <div class="spotlight-card">
+      <div class="spotlight-head">
+        <span class="spotlight-title" id="spotlightTitle">Marcos de hoje</span>
+        <span class="spotlight-count" id="spotlightCount"></span>
+      </div>
+      <div class="spotlight-body" id="spotlightBody"></div>
+      <div class="spotlight-foot" id="spotlightFoot"></div>
+    </div>
   </div>
 </div>
 
@@ -573,6 +627,103 @@ document.addEventListener("click", function(){ if (!fsElement()){ requestFS(); h
 // tenta automaticamente ao abrir (alguns navegadores de TV permitem)
 setTimeout(function(){ requestFS(); }, 800);
 showFsBtn();
+
+/* ============================================================
+   OVERLAY DE DESTAQUE (spotlight) — a cada 10 min, amplia os
+   marcos de HOJE; se não houver nenhum hoje, mostra o próximo
+   marco mais próximo. Fica 45s e some sozinho.
+   ============================================================ */
+var SPOTLIGHT_EVERY_MIN = 10;   // intervalo
+var SPOTLIGHT_SECONDS = 45;     // duração visível
+var __spotTimer = null;
+
+function buildSpotlightItems(){
+  var now=new Date();
+  var events=buildEvents(now);
+  var up=[];
+  for (var i=0;i<events.length;i++){ var e=events[i]; if (!isDoneType(e.type) && e.dd>=0) up.push(e); }
+  up.sort(byProximity);
+  // marcos de hoje
+  var today=[];
+  for (i=0;i<up.length;i++){ if (up[i].dd===0) today.push(up[i]); }
+  if (today.length){ return {mode:"today", items:today}; }
+  // senão, o próximo mais próximo (pode haver empate de dias -> mostra todos do mesmo dia)
+  if (up.length){
+    var firstDd=up[0].dd, nxt=[];
+    for (i=0;i<up.length;i++){ if (up[i].dd===firstDd) nxt.push(up[i]); }
+    return {mode:"next", items:nxt};
+  }
+  return {mode:"empty", items:[]};
+}
+
+function renderSpotlight(){
+  var data2=buildSpotlightItems();
+  var title=document.getElementById("spotlightTitle");
+  var count=document.getElementById("spotlightCount");
+  var body=document.getElementById("spotlightBody");
+  var foot=document.getElementById("spotlightFoot");
+  if (!title||!body) return false;
+
+  if (data2.mode==="empty"){
+    title.innerHTML="Sem marcos pendentes";
+    count.innerHTML="";
+    body.innerHTML='<div class="sl-item"><div class="sl-text"><div class="sl-desc">Todos os modelos foram entregues \uD83C\uDF89</div></div></div>';
+    foot.innerHTML="";
+    return true;
+  }
+
+  if (data2.mode==="today"){
+    title.innerHTML="\uD83D\uDCCD Marcos de HOJE";
+  } else {
+    title.innerHTML="Pr\u00f3ximo marco";
+  }
+  count.innerHTML = data2.items.length>1 ? (data2.items.length+" itens") : "";
+
+  var html="", i;
+  for (i=0;i<data2.items.length && i<5;i++){
+    var e=data2.items[i];
+    var L=labelFor(e.type);
+    var wd=WEEKDAYS[e.date.getDay()];
+    var cls="sl-item"+(e.dd===0?" today":(e.dd<=2?" urgent":""));
+    var whenB, whenS;
+    if (e.dd===0){ whenB="HOJE"; whenS=""; }
+    else { whenB=e.dd; whenS=(e.dd===1?"dia":"dias"); }
+    var reprog="";
+    if (e.history && e.history.length){
+      var olds="";
+      for (var hi=0;hi<e.history.length;hi++){ olds+=(hi?" ":"")+"<s>"+esc(e.history[hi])+"</s>"; }
+      reprog=' <span class="reprog-tag">reprogramado</span> <span class="reprog-old">'+olds+'</span>';
+    }
+    html += '<div class="'+cls+'">'+
+              '<span class="sl-proj">'+esc(e.proj)+'</span>'+
+              '<span class="sl-text">'+
+                '<div class="sl-desc">'+esc(e.desc)+'</div>'+
+                '<div class="sl-meta"><span class="sl-chip" style="background:'+L.bg+';color:'+L.color+';">'+L.ico+' '+esc(L.name)+'</span>'+
+                fmtShort(e.date)+' \u00b7 '+wd+reprog+'</div>'+
+              '</span>'+
+              '<span class="sl-when"><span class="b">'+whenB+'</span>'+(whenS?'<span class="s">'+whenS+' restante'+(e.dd===1?'':'s')+'</span>':'')+'</span>'+
+            '</div>';
+  }
+  body.innerHTML=html;
+  foot.innerHTML="Acompanhar com BIM Manager e Coordena\u00e7\u00e3o de Projeto \u00b7 HIAE 1183";
+  return true;
+}
+
+function showSpotlight(){
+  var ok=renderSpotlight();
+  if (!ok) return;
+  var sp=document.getElementById("spotlight");
+  if (!sp) return;
+  sp.className="spotlight show";
+  if (__spotTimer){ clearTimeout(__spotTimer); }
+  __spotTimer=setTimeout(hideSpotlight, SPOTLIGHT_SECONDS*1000);
+}
+function hideSpotlight(){
+  var sp=document.getElementById("spotlight");
+  if (sp){ sp.className="spotlight"; }
+}
+// a cada 10 minutos, exibe o destaque
+setInterval(showSpotlight, SPOTLIGHT_EVERY_MIN*60000);
 
 </script>
 </body>
