@@ -90,6 +90,9 @@ body {
 .row .desc .t { font-size:17px; font-weight:700; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .row .desc .m { font-size:13px; color:#64708f; font-weight:600; margin-top:5px; }
 .row .desc .m-date { font-weight:800; color:#142a6b; font-size:15px; margin-left:6px; text-transform:capitalize; }
+.row .desc .reprog-tag { display:inline-block; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; background:#fde7d6; color:#c2540a; padding:2px 8px; border-radius:999px; margin-left:8px; }
+.row .desc .reprog-old { color:#b0392f; font-size:13px; font-weight:700; margin-left:5px; }
+.row .desc .reprog-old s { opacity:.85; }
 .row .chip { display:inline-block; font-size:12px; font-weight:800; padding:3px 9px; border-radius:999px; text-transform:uppercase; margin-right:6px; }
 .row .chip.entrega { background:#e9eefb; color:#1f47b8; }
 .row .chip.dr { background:#eaf6ec; color:#2e9e3f; }
@@ -284,7 +287,7 @@ function buildEvents(now){
     var p=PROJECTS[i];
     for (j=0;j<p.events.length;j++){
       var ev=p.events[j]; var date=parseDMY(ev.d);
-      list.push({proj:p.id,desc:p.desc,type:ev.t,date:date,dd:daysBetween(now,date),raw:ev.d});
+      list.push({proj:p.id,desc:p.desc,type:ev.t,date:date,dd:daysBetween(now,date),raw:ev.d,history:ev.history||null});
     }
   }
   return list;
@@ -356,10 +359,16 @@ function render(){
     else { whenBig=e.dd; whenSmall="dias restantes"; }
     var L=labelFor(e.type);
     var wd=WEEKDAYS_ABBR[e.date.getDay()];
+    var reprog="";
+    if (e.history && e.history.length){
+      var olds="";
+      for (var hi=0; hi<e.history.length; hi++){ olds += (hi?" ":"") + "<s>"+esc(e.history[hi])+"</s>"; }
+      reprog = ' <span class="reprog-tag">reprogramado</span> <span class="reprog-old">'+olds+'</span>';
+    }
     feed += '<div class="'+cls+'"><div class="proj">'+esc(e.proj)+'</div>'+
             '<div class="desc"><div class="t">'+esc(e.desc)+'</div>'+
             '<div class="m"><span class="chip" style="background:'+L.bg+';color:'+L.color+';">'+L.ico+' '+esc(L.name)+'</span>'+
-            ' <span class="m-date">'+fmtShort(e.date)+' \u00b7 '+wd+'</span></div></div>'+
+            ' <span class="m-date">'+fmtShort(e.date)+' \u00b7 '+wd+'</span>'+reprog+'</div></div>'+
             '<div class="when"><div class="big">'+whenBig+'</div><div class="small">'+whenSmall+'</div></div></div>';
   }
   if (!feed){ feed='<div class="row"><div class="desc"><div class="t">Nenhum marco pendente \uD83C\uDF89</div><div class="m">Todos os modelos foram entregues.</div></div></div>'; }
