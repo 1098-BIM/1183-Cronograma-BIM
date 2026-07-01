@@ -163,13 +163,17 @@ body {
 .spotlight-head { border-bottom:3px solid #e3e8f3; padding-bottom:22px; margin-bottom:26px; }
 .spotlight-title { font-size:52px; font-weight:800; color:#0c1b47; }
 .spotlight-count { float:right; font-size:30px; font-weight:800; color:#1f47b8; margin-top:14px; }
-.spotlight-body { }
+.spotlight-body { position:absolute; left:56px; right:56px; top:190px; bottom:80px; overflow:hidden; }
 .sl-item {
   border:2px solid #e3e8f3; border-radius:18px; padding:24px 30px; margin-bottom:20px;
   position:relative;
 }
 .sl-item.urgent { border-color:#d8342b; background:#fbe8e7; }
 .sl-item.today  { border-color:#2e9e3f; background:#eef9f0; }
+.sl-item.blink-green { border-color:#a9d9b1; background:#eef9f0; }
+.sl-item.blink-green .sl-when .b { color:#2e9e3f; }
+.sl-item.blink-red { border-color:#f0a9a3; background:#fbe8e7; }
+.sl-item.blink-red .sl-when .b { color:#d8342b; }
 .sl-proj {
   display:inline-block; font-size:34px; font-weight:800; color:#142a6b;
   background:#eef2fa; border:2px solid #d6def0; border-radius:12px; padding:8px 20px; margin-right:24px; vertical-align:middle;
@@ -706,6 +710,8 @@ var PROJECTS = [
 /* ============================================================
    ENGINE DO PAINEL — ES5 puro para Smart TV antiga (Tizen/Sony/LG)
    ============================================================ */
+if (typeof SPOTLIGHT_FOOT === "undefined") { var SPOTLIGHT_FOOT = ""; }
+if (typeof FOOTER_MSG === "undefined") { var FOOTER_MSG = ""; }
 /* TYPES é injetado pelo gerador (igual a PROJECTS). Se faltar, usa padrão. */
 if (typeof TYPES === "undefined") {
   var TYPES = [
@@ -1041,93 +1047,114 @@ var SPOTLIGHT_EVERY_MIN = 10;   // intervalo
 var SPOTLIGHT_SECONDS = 45;     // duração visível
 var __spotTimer = null;
 
-function buildSpotlightItems(){
+function spotlightItemsForDay(targetDd){
+  // retorna todos os marcos (não cancelados, não concluídos) cujo dd == targetDd
   var now=new Date();
   var events=buildEvents(now);
-  var up=[];
-  for (var i=0;i<events.length;i++){ var e=events[i]; if (!isDoneType(e.type) && e.dd>=0) up.push(e); }
-  up.sort(byProximity);
-  // marcos de hoje
-  var today=[];
-  for (i=0;i<up.length;i++){ if (up[i].dd===0) today.push(up[i]); }
-  if (today.length){ return {mode:"today", items:today}; }
-  // senão, o próximo mais próximo (pode haver empate de dias -> mostra todos do mesmo dia)
-  if (up.length){
-    var firstDd=up[0].dd, nxt=[];
-    for (i=0;i<up.length;i++){ if (up[i].dd===firstDd) nxt.push(up[i]); }
-    return {mode:"next", items:nxt};
+  var list=[];
+  for (var i=0;i<events.length;i++){
+    var e=events[i];
+    if (!isDoneType(e.type) && e.dd===targetDd){ list.push(e); }
   }
-  return {mode:"empty", items:[]};
+  list.sort(byProximity);
+  return list;
 }
 
-function renderSpotlight(){
-  var data2=buildSpotlightItems();
+function renderSpotlight(dayMode){
+  // dayMode: "today" (dd=0) ou "tomorrow" (dd=1)
   var title=document.getElementById("spotlightTitle");
   var count=document.getElementById("spotlightCount");
   var body=document.getElementById("spotlightBody");
   var foot=document.getElementById("spotlightFoot");
   if (!title||!body) return false;
 
-  if (data2.mode==="empty"){
-    title.innerHTML="Sem marcos pendentes";
-    count.innerHTML="";
-    body.innerHTML='<div class="sl-item"><div class="sl-text"><div class="sl-desc">Todos os modelos foram entregues 🎉</div></div></div>';
-    foot.innerHTML="";
-    return true;
-  }
+  var targetDd = (dayMode==="tomorrow") ? 1 : 0;
+  var items = spotlightItemsForDay(targetDd);
+  if (!items.length){ return false; }   // nada nesse dia -> não exibe
 
-  if (data2.mode==="today"){
-    title.innerHTML="📍 Marcos de HOJE";
+  if (dayMode==="tomorrow"){
+    title.innerHTML="\uD83D\uDCC5 Marcos de AMANH\u00c3";
   } else {
-    title.innerHTML="Próximo marco";
+    title.innerHTML="\uD83D\uDCCD Marcos de HOJE";
   }
-  count.innerHTML = data2.items.length>1 ? (data2.items.length+" itens") : "";
+  count.innerHTML = items.length>1 ? (items.length+" itens") : "";
+
+  // classe do dia controla a cor do piscar (verde para hoje, vermelho para amanhã)
+  var itemCls = (dayMode==="tomorrow") ? "sl-item blink-red" : "sl-item blink-green";
 
   var html="", i;
-  for (i=0;i<data2.items.length && i<5;i++){
-    var e=data2.items[i];
+  for (i=0;i<items.length;i++){         // mostra TODOS os marcos do dia
+    var e=items[i];
     var L=labelFor(e.type);
     var wd=WEEKDAYS[e.date.getDay()];
-    var cls="sl-item"+(e.dd===0?" today":(e.dd<=2?" urgent":""));
     var whenB, whenS;
     if (e.dd===0){ whenB="HOJE"; whenS=""; }
-    else { whenB=e.dd; whenS=(e.dd===1?"dia":"dias"); }
+    else if (e.dd===1){ whenB="AMANH\u00c3"; whenS=""; }
+    else { whenB=e.dd; whenS="dias"; }
     var reprog="";
     if (e.history && e.history.length){
       var olds="";
       for (var hi=0;hi<e.history.length;hi++){ olds+=(hi?" ":"")+"<s>"+esc(e.history[hi])+"</s>"; }
       reprog=' <span class="reprog-tag">reprogramado</span> <span class="reprog-old">'+olds+'</span>';
     }
-    html += '<div class="'+cls+'">'+
+    html += '<div class="'+itemCls+'">'+
               '<span class="sl-proj">'+esc(e.proj)+'</span>'+
               '<span class="sl-text">'+
                 '<div class="sl-desc">'+esc(e.desc)+'</div>'+
                 '<div class="sl-meta"><span class="sl-chip" style="background:'+L.bg+';color:'+L.color+';">'+L.ico+' '+esc(L.name)+'</span>'+
-                fmtShort(e.date)+' · '+wd+reprog+'</div>'+
+                fmtShort(e.date)+' \u00b7 '+wd+reprog+'</div>'+
               '</span>'+
-              '<span class="sl-when"><span class="b">'+whenB+'</span>'+(whenS?'<span class="s">'+whenS+' restante'+(e.dd===1?'':'s')+'</span>':'')+'</span>'+
+              '<span class="sl-when"><span class="b">'+whenB+'</span>'+(whenS?'<span class="s">'+whenS+'</span>':'')+'</span>'+
             '</div>';
   }
   body.innerHTML=html;
-  foot.innerHTML="Acompanhar com BIM Manager e Coordenação de Projeto · HIAE 1183";
+  foot.innerHTML=SPOTLIGHT_FOOT || "";
   return true;
 }
 
-function showSpotlight(){
-  var ok=renderSpotlight();
-  if (!ok) return;
+// piscar via JS (TV antiga não roda @keyframes): alterna o realce dos itens
+var __spotBlink=false;
+function spotlightBlinkTick(){
+  __spotBlink=!__spotBlink;
+  var greens=document.getElementsByClassName("blink-green");
+  var reds=document.getElementsByClassName("blink-red");
+  var k;
+  for (k=0;k<greens.length;k++){
+    greens[k].style.background=__spotBlink?"#d6f5dd":"#eef9f0";
+    greens[k].style.borderColor=__spotBlink?"#2e9e3f":"#a9d9b1";
+  }
+  for (k=0;k<reds.length;k++){
+    reds[k].style.background=__spotBlink?"#fbd5d2":"#fbe8e7";
+    reds[k].style.borderColor=__spotBlink?"#d8342b":"#f0a9a3";
+  }
+}
+setInterval(spotlightBlinkTick, 600);
+
+function showSpotlightFor(dayMode, seconds, thenFn){
+  var ok=renderSpotlight(dayMode);
   var sp=document.getElementById("spotlight");
-  if (!sp) return;
+  if (!ok || !sp){ if (thenFn) thenFn(); return; }  // sem itens: pula direto
   sp.className="spotlight show";
   if (__spotTimer){ clearTimeout(__spotTimer); }
-  __spotTimer=setTimeout(hideSpotlight, SPOTLIGHT_SECONDS*1000);
+  __spotTimer=setTimeout(function(){
+    hideSpotlight();
+    if (thenFn){ setTimeout(thenFn, 5000); }  // 5s de intervalo antes da próxima tela
+  }, seconds*1000);
 }
 function hideSpotlight(){
   var sp=document.getElementById("spotlight");
   if (sp){ sp.className="spotlight"; }
 }
-// a cada 10 minutos, exibe o destaque
-setInterval(showSpotlight, SPOTLIGHT_EVERY_MIN*60000);
+
+// ciclo completo: HOJE (45s) -> 5s -> AMANHÃ (45s, se houver)
+function runSpotlightCycle(){
+  showSpotlightFor("today", SPOTLIGHT_SECONDS, function(){
+    showSpotlightFor("tomorrow", SPOTLIGHT_SECONDS, null);
+  });
+}
+// a cada 10 minutos, roda o ciclo
+setInterval(runSpotlightCycle, SPOTLIGHT_EVERY_MIN*60000);
+
 
 /* MANTER A TELA ACESA (anti-tela-preta) */
 (function(){
