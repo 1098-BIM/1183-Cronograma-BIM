@@ -494,10 +494,6 @@ var PROJECTS = [
     desc: "Substituição ressonância magnética Térreo — Ibirapuera",
     events: [
       {
-        t: "novo_tipo_2",
-        d: "24/06"
-      },
-      {
         t: "dr",
         d: "01/07"
       },
@@ -514,8 +510,11 @@ var PROJECTS = [
         d: "07/07"
       },
       {
-        t: "apres",
-        d: "08/07"
+        t: "novo_tipo_2",
+        d: "08/07",
+        history: [
+          "24/06"
+        ]
       },
       {
         t: "dr",
@@ -544,6 +543,10 @@ var PROJECTS = [
       {
         t: "novo_tipo",
         d: "20/07"
+      },
+      {
+        t: "apres",
+        d: "22/07"
       },
       {
         t: "novo_tipo_4",
@@ -639,7 +642,10 @@ var PROJECTS = [
       },
       {
         t: "novo_tipo_2",
-        d: "02/07"
+        d: "03/07",
+        history: [
+          "02/07"
+        ]
       },
       {
         t: "dr",
@@ -1116,6 +1122,29 @@ function hideSpotlight(){
 }
 // a cada 10 minutos, exibe o destaque
 setInterval(showSpotlight, SPOTLIGHT_EVERY_MIN*60000);
+
+/* MANTER A TELA ACESA (anti-tela-preta) */
+(function(){
+  var wakeLock = null;
+  function requestWakeLock(){
+    try{
+      if (navigator.wakeLock && navigator.wakeLock.request){
+        navigator.wakeLock.request("screen").then(function(wl){ wakeLock = wl; }).catch(function(){});
+      }
+    }catch(e){}
+  }
+  document.addEventListener("visibilitychange", function(){
+    if (document.visibilityState === "visible"){ requestWakeLock(); }
+  });
+  var ping = document.createElement("div");
+  ping.style.cssText = "position:fixed;left:0;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none;z-index:1;";
+  ping.setAttribute("aria-hidden","true");
+  document.body.appendChild(ping);
+  var toggle = false;
+  setInterval(function(){ toggle = !toggle; ping.style.transform = toggle ? "translateY(1px)" : "translateY(0px)"; }, 20000);
+  requestWakeLock();
+})();
+
 
 </script>
 </body>
